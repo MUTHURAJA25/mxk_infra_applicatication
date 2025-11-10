@@ -16,7 +16,6 @@ variable "key_name" {
 variable "project_name" {
   description = "Name of the project (used for tagging)"
   type        = string
-<<<<<<< HEAD
 }
 
 variable "vpc_cidr" {
@@ -37,8 +36,6 @@ variable "az1" {
 variable "ami_id" {
   description = "AMI ID for EC2 instance"
   type        = string
-=======
->>>>>>> 4914131 (Updated local files)
 }
 
 variable "vpc_cidr" {

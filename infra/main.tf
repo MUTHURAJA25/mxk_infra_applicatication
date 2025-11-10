@@ -1,10 +1,3 @@
-<<<<<<< HEAD
-=======
-provider "aws" {
-  region = var.aws_region
-}
-
->>>>>>> 4914131 (Updated local files)
 # --- VPC ---
 resource "aws_vpc" "main" {
   cidr_block           = var.vpc_cidr

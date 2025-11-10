@@ -63,15 +63,20 @@ pipeline {
             }
         }
 
-        stage('Build Docker Image') {
-            steps {
-                sh """
-                    echo "🚀 Building Docker image..."
-                    docker build -t ${IMAGE_NAME}:${IMAGE_TAG} .
-                    docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${IMAGE_NAME}:latest
-                """
-            }
-        }
+       stage('Build Docker Image') {
+    steps {
+        sh """
+            echo "📂 Listing all files to verify public folder..."
+        """
+        sh "ls -R"
+        
+        sh """
+            echo "🚀 Building Docker image..."
+            docker build -t ${IMAGE_NAME}:${IMAGE_TAG} .
+            docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${IMAGE_NAME}:latest
+        """
+    }
+}
 
         stage('Push to Docker Hub') {
             steps {

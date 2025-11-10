@@ -1,0 +1,126 @@
+pipeline {
+    agent any
+
+    environment {
+        AWS_REGION = "us-east-2"
+        ECR_REPO  = "740436505680.dkr.ecr.us-east-2.amazonaws.com/myapp"
+    }
+
+    stages {
+
+        /* -------------------------------
+           1. CLONE INFRA + APP REPOS
+        --------------------------------*/
+        stage('Clone Infra Repo') {
+            steps {
+                deleteDir()
+                git branch: 'main', url: 'https://github.com/MUTHURAJA25/infra_mxk.git'
+                sh "ls -la"
+            }
+        }
+
+        /* -------------------------------
+           2. TERRAFORM: INIT + APPLY
+        --------------------------------*/
+        stage('Terraform Init') {
+            steps {
+                withCredentials([[ $class: 'AmazonWebServicesCredentialsBinding',
+                    credentialsId: 'aws-crendentails-vgs']]) {
+                    sh "terraform init"
+                }
+            }
+        }
+
+        stage('Terraform Plan') {
+            steps {
+                withCredentials([[ $class: 'AmazonWebServicesCredentialsBinding',
+                    credentialsId: 'aws-crendentails-vgs']]) {
+                    sh "terraform plan -var-file=tf.vars -out=tfplan"
+                }
+            }
+        }
+
+        stage('Terraform Apply') {
+            steps {
+                withCredentials([[ $class: 'AmazonWebServicesCredentialsBinding',
+                    credentialsId: 'aws-crendentails-vgs']]) {
+                    sh "terraform apply -auto-approve tfplan"
+                }
+            }
+        }
+
+        /* -------------------------------
+           3. GET EC2 PUBLIC IP
+        --------------------------------*/
+        stage('Get EC2 IP') {
+            steps {
+                script {
+                    EC2_IP = sh(script: "terraform output -raw ec2_public_ip", returnStdout: true).trim()
+                    echo "EC2 Public IP = ${EC2_IP}"
+                }
+            }
+        }
+
+        /* -------------------------------
+           4. CLONE APPLICATION REPO
+        --------------------------------*/
+        stage('Clone App Repo') {
+            steps {
+                dir('app') {
+                    git branch: 'main', url: 'https://github.com/MUTHURAJA25/your-app-repo.git'
+                }
+            }
+        }
+
+        /* -------------------------------
+           5. DOCKER BUILD
+        --------------------------------*/
+        stage('Build Docker Image') {
+            steps {
+                dir('app') {
+                    sh "docker build -t myapp:latest ."
+                }
+            }
+        }
+
+        /* -------------------------------
+           6. PUSH IMAGE TO ECR
+        --------------------------------*/
+        stage('Push to ECR') {
+            steps {
+                withCredentials([[ $class: 'AmazonWebServicesCredentialsBinding',
+                    credentialsId: 'aws-crendentails-vgs']]) {
+
+                    sh """
+                    aws ecr get-login-password --region $AWS_REGION \
+                        | docker login --username AWS --password-stdin $ECR_REPO
+
+                    docker tag myapp:latest $ECR_REPO:latest
+                    docker push $ECR_REPO:latest
+                    """
+                }
+            }
+        }
+
+        /* -------------------------------
+           7. DEPLOY DOCKER ON EC2
+        --------------------------------*/
+        stage('Deploy on EC2') {
+            steps {
+                withCredentials([sshUserPrivateKey(
+                    credentialsId: 'ec2-ssh-key',
+                    keyFileVariable: 'SSH_KEY')]) {
+
+                    sh """
+                    ssh -o StrictHostKeyChecking=no -i $SSH_KEY ubuntu@${EC2_IP} '
+                        sudo docker pull $ECR_REPO:latest &&
+                        sudo docker stop myapp || true &&
+                        sudo docker rm myapp || true &&
+                        sudo docker run -d --name myapp -p 80:80 $ECR_REPO:latest
+                    '
+                    """
+                }
+            }
+        }
+    }
+}

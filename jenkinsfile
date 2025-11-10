@@ -2,30 +2,28 @@ pipeline {
     agent any
 
     environment {
-        AWS_REGION = "us-east-2"
-        ECR_REPO  = "740436505680.dkr.ecr.us-east-2.amazonaws.com/myapp"
+        AWS_REGION     = "us-east-2"
+        DOCKERHUB_USER = "muthuraja25"
+        IMAGE_NAME     = "muthuraja25/myapp"
+        IMAGE_TAG      = "build-${BUILD_NUMBER}"
     }
 
     stages {
 
-        /* -------------------------------
-           1. CLONE INFRA + APP REPOS
-        --------------------------------*/
-        stage('Clone Infra Repo') {
+        stage('Checkout Code') {
             steps {
                 deleteDir()
-                git branch: 'main', url: 'https://github.com/MUTHURAJA25/infra_mxk.git'
+                git branch: 'main', url: 'https://github.com/MUTHURAJA25/mxk_infra_applicatication.git'
                 sh "ls -la"
             }
         }
 
-        /* -------------------------------
-           2. TERRAFORM: INIT + APPLY
-        --------------------------------*/
         stage('Terraform Init') {
             steps {
-                withCredentials([[ $class: 'AmazonWebServicesCredentialsBinding',
-                    credentialsId: 'aws-crendentails-vgs']]) {
+                withCredentials([[ 
+                    $class: 'AmazonWebServicesCredentialsBinding',
+                    credentialsId: 'aws-crendentails-vgs'
+                ]]) {
                     sh "terraform init"
                 }
             }
@@ -33,94 +31,91 @@ pipeline {
 
         stage('Terraform Plan') {
             steps {
-                withCredentials([[ $class: 'AmazonWebServicesCredentialsBinding',
-                    credentialsId: 'aws-crendentails-vgs']]) {
-                    sh "terraform plan -var-file=tf.vars -out=tfplan"
+                withCredentials([[ 
+                    $class: 'AmazonWebServicesCredentialsBinding',
+                    credentialsId: 'aws-crendentails-vgs'
+                ]]) {
+                    sh "terraform plan -var-file=terraform.tfvars -out=tfplan"
                 }
             }
         }
 
         stage('Terraform Apply') {
             steps {
-                withCredentials([[ $class: 'AmazonWebServicesCredentialsBinding',
-                    credentialsId: 'aws-crendentails-vgs']]) {
+                withCredentials([[ 
+                    $class: 'AmazonWebServicesCredentialsBinding',
+                    credentialsId: 'aws-crendentails-vgs'
+                ]]) {
                     sh "terraform apply -auto-approve tfplan"
                 }
             }
         }
 
-        /* -------------------------------
-           3. GET EC2 PUBLIC IP
-        --------------------------------*/
-        stage('Get EC2 IP') {
+        stage('Get EC2 Public IP') {
             steps {
                 script {
-                    EC2_IP = sh(script: "terraform output -raw ec2_public_ip", returnStdout: true).trim()
-                    echo "EC2 Public IP = ${EC2_IP}"
+                    env.EC2_PUBLIC_IP = sh(
+                        script: "terraform output -raw ec2_public_ip",
+                        returnStdout: true
+                    ).trim()
+                    echo "EC2 PUBLIC IP = ${env.EC2_PUBLIC_IP}"
                 }
             }
         }
 
-        /* -------------------------------
-           4. CLONE APPLICATION REPO
-        --------------------------------*/
-        stage('Clone App Repo') {
-            steps {
-                dir('app') {
-                    git branch: 'main', url: 'https://github.com/MUTHURAJA25/your-app-repo.git'
-                }
-            }
-        }
-
-        /* -------------------------------
-           5. DOCKER BUILD
-        --------------------------------*/
         stage('Build Docker Image') {
             steps {
-                dir('app') {
-                    sh "docker build -t myapp:latest ."
-                }
+                sh """
+                    docker build -t ${IMAGE_NAME}:${IMAGE_TAG} .
+                    docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${IMAGE_NAME}:latest
+                """
             }
         }
 
-        /* -------------------------------
-           6. PUSH IMAGE TO ECR
-        --------------------------------*/
-        stage('Push to ECR') {
+        stage('Push to Docker Hub') {
             steps {
-                withCredentials([[ $class: 'AmazonWebServicesCredentialsBinding',
-                    credentialsId: 'aws-crendentails-vgs']]) {
-
+                withCredentials([usernamePassword(
+                    credentialsId: 'dockerhub-creds',
+                    usernameVariable: 'USER',
+                    passwordVariable: 'PASS'
+                )]) {
                     sh """
-                    aws ecr get-login-password --region $AWS_REGION \
-                        | docker login --username AWS --password-stdin $ECR_REPO
-
-                    docker tag myapp:latest $ECR_REPO:latest
-                    docker push $ECR_REPO:latest
+                        echo "$PASS" | docker login -u "$USER" --password-stdin
+                        docker push ${IMAGE_NAME}:${IMAGE_TAG}
+                        docker push ${IMAGE_NAME}:latest
+                        docker logout
                     """
                 }
             }
         }
 
-        /* -------------------------------
-           7. DEPLOY DOCKER ON EC2
-        --------------------------------*/
-        stage('Deploy on EC2') {
+        stage('Deploy to EC2') {
             steps {
-                withCredentials([sshUserPrivateKey(
+                withCredentials([ sshUserPrivateKey(
                     credentialsId: 'ec2-ssh-key',
-                    keyFileVariable: 'SSH_KEY')]) {
-
+                    keyFileVariable: 'SSH_KEY',
+                    usernameVariable: 'SSH_USER'
+                )]) {
                     sh """
-                    ssh -o StrictHostKeyChecking=no -i $SSH_KEY ubuntu@${EC2_IP} '
-                        sudo docker pull $ECR_REPO:latest &&
-                        sudo docker stop myapp || true &&
-                        sudo docker rm myapp || true &&
-                        sudo docker run -d --name myapp -p 80:80 $ECR_REPO:latest
-                    '
+                        chmod 600 "$SSH_KEY"
+
+                        ssh -o StrictHostKeyChecking=no -i "$SSH_KEY" $SSH_USER@${EC2_PUBLIC_IP} '
+                            sudo systemctl start docker || true
+                            sudo docker pull ${IMAGE_NAME}:latest
+                            sudo docker stop myapp || true
+                            sudo docker rm myapp || true
+                            sudo docker run -d --name myapp -p 80:80 ${IMAGE_NAME}:latest
+                        '
                     """
                 }
             }
         }
     }
+
+    post {
+        always {
+            echo "App running at http://${EC2_PUBLIC_IP}"
+        }
+    }
 }
+

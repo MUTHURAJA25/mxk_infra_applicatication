@@ -20,7 +20,7 @@ pipeline {
 
         stage('Terraform Init') {
             steps {
-                withCredentials([[ 
+                withCredentials([[
                     $class: 'AmazonWebServicesCredentialsBinding',
                     credentialsId: 'aws-crendentails-vgs'
                 ]]) {
@@ -31,7 +31,7 @@ pipeline {
 
         stage('Terraform Plan') {
             steps {
-                withCredentials([[ 
+                withCredentials([[
                     $class: 'AmazonWebServicesCredentialsBinding',
                     credentialsId: 'aws-crendentails-vgs'
                 ]]) {
@@ -42,7 +42,7 @@ pipeline {
 
         stage('Terraform Apply') {
             steps {
-                withCredentials([[ 
+                withCredentials([[
                     $class: 'AmazonWebServicesCredentialsBinding',
                     credentialsId: 'aws-crendentails-vgs'
                 ]]) {
@@ -58,7 +58,7 @@ pipeline {
                         script: "terraform output -raw ec2_public_ip",
                         returnStdout: true
                     ).trim()
-                    echo "EC2 PUBLIC IP = ${env.EC2_PUBLIC_IP}"
+                    echo "✅ EC2 PUBLIC IP = ${env.EC2_PUBLIC_IP}"
                 }
             }
         }
@@ -66,6 +66,7 @@ pipeline {
         stage('Build Docker Image') {
             steps {
                 sh """
+                    echo "🚀 Building Docker image..."
                     docker build -t ${IMAGE_NAME}:${IMAGE_TAG} .
                     docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${IMAGE_NAME}:latest
                 """
@@ -91,7 +92,7 @@ pipeline {
 
         stage('Deploy to EC2') {
             steps {
-                withCredentials([ sshUserPrivateKey(
+                withCredentials([sshUserPrivateKey(
                     credentialsId: 'ec2-ssh-key',
                     keyFileVariable: 'SSH_KEY',
                     usernameVariable: 'SSH_USER'
@@ -99,11 +100,13 @@ pipeline {
                     sh """
                         chmod 600 "$SSH_KEY"
 
+                        echo "🚀 Deploying container to EC2..."
                         ssh -o StrictHostKeyChecking=no -i "$SSH_KEY" $SSH_USER@${EC2_PUBLIC_IP} '
                             sudo systemctl start docker || true
-                            sudo docker pull ${IMAGE_NAME}:latest
+                            sudo ufw allow 80/tcp || true
                             sudo docker stop myapp || true
                             sudo docker rm myapp || true
+                            sudo docker pull ${IMAGE_NAME}:latest
                             sudo docker run -d --name myapp -p 80:80 ${IMAGE_NAME}:latest
                         '
                     """
@@ -114,8 +117,7 @@ pipeline {
 
     post {
         always {
-            echo "App running at http://${EC2_PUBLIC_IP}"
+            echo "✅ Deployment finished — visit: http://${EC2_PUBLIC_IP}"
         }
     }
 }
-

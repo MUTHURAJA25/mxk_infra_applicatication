@@ -19,18 +19,17 @@ pipeline {
         }
 
         stage('Terraform Init') {
-    steps {
-        dir('infra') {
-            withCredentials([[
-                $class: 'AmazonWebServicesCredentialsBinding',
-                credentialsId: 'aws-crendentails-vgs'
-            ]]) {
-                sh "terraform init -reconfigure"
+            steps {
+                dir('infra') {
+                    withCredentials([[
+                        $class: 'AmazonWebServicesCredentialsBinding',
+                        credentialsId: 'aws-crendentails-vgs'
+                    ]]) {
+                        sh "terraform init -reconfigure"
+                    }
+                }
             }
         }
-    }
-}
-
 
         stage('Terraform Plan') {
             steps {
@@ -61,31 +60,25 @@ pipeline {
         stage('Get Terraform Outputs') {
             steps {
                 dir('infra') {
-                    withCredentials([[
-                        $class: 'AmazonWebServicesCredentialsBinding',
-                        credentialsId: 'aws-crendentails-vgs'
-                    ]]) {
-                        sh "terraform output"
-                    }
+                    sh "terraform output"
                 }
             }
         }
 
         stage('Get EC2 Public IP') {
             steps {
-        dir('infra') {
-            script {
-                env.EC2_PUBLIC_IP = sh(
-                    script: "terraform output -raw ec2_public_ip",
-                    returnStdout: true
-                ).trim()
+                dir('infra') {
+                    script {
+                        env.EC2_PUBLIC_IP = sh(
+                            script: "terraform output -raw ec2_public_ip",
+                            returnStdout: true
+                        ).trim()
 
-                echo "✅ EC2 PUBLIC IP = ${env.EC2_PUBLIC_IP}"
+                        echo "✅ EC2 PUBLIC IP = ${env.EC2_PUBLIC_IP}"
+                    }
+                }
             }
         }
-    }
-}
-
 
         stage('Build Docker Image') {
             steps {
@@ -115,30 +108,29 @@ pipeline {
         }
 
         stage('Deploy to EC2') {
-    steps {
-        withCredentials([sshUserPrivateKey(
-            credentialsId: 'ec2-ssh-key',
-            keyFileVariable: 'SSH_KEY',
-            usernameVariable: 'SSH_USER'
-        )]) {
-            sh '''
-                chmod 600 "$SSH_KEY"
+            steps {
+                withCredentials([sshUserPrivateKey(
+                    credentialsId: 'ec2-ssh-key',
+                    keyFileVariable: 'SSH_KEY',
+                    usernameVariable: 'SSH_USER'
+                )]) {
+                    sh '''
+                        chmod 600 "$SSH_KEY"
 
-                echo "🚀 Deploying container to EC2..."
+                        echo "🚀 Deploying container to EC2..."
 
-                ssh -o StrictHostKeyChecking=no -i "$SSH_KEY" "$SSH_USER"@"$EC2_PUBLIC_IP" '
-                    sudo systemctl start docker || true
-                    sudo docker stop myapp || true
-                    sudo docker rm myapp || true
-                    sudo docker pull muthuraja25/myapp:latest
-                    sudo docker run -d --name myapp -p 80:80 muthuraja25/myapp:latest
-                '
-            '''
+                        ssh -o StrictHostKeyChecking=no -i "$SSH_KEY" "$SSH_USER"@"$EC2_PUBLIC_IP" '
+                            sudo systemctl start docker || true
+                            sudo docker stop myapp || true
+                            sudo docker rm myapp || true
+                            sudo docker pull muthuraja25/myapp:latest
+                            sudo docker run -d --name myapp -p 80:80 muthuraja25/myapp:latest
+                        '
+                    '''
+                }
+            }
         }
     }
-}
-
-
 
     post {
         always {

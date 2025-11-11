@@ -1,13 +1,15 @@
+properties([
+    parameters([
+        choice(
+            name: 'PIPELINE_MODE',
+            choices: ['deploy', 'destroy'],
+            description: 'Select: deploy infra/app OR destroy infra'
+        )
+    ])
+])
+
 pipeline {
     agent any
-
-    parameters {
-        booleanParam(
-            name: 'DESTROY_INFRA',
-            defaultValue: false,
-            description: 'Enable to destroy complete Terraform infrastructure'
-        )
-    }
 
     environment {
         AWS_REGION     = "us-east-2"
@@ -19,7 +21,7 @@ pipeline {
     stages {
 
         stage('Checkout Code') {
-            when { expression { return !params.DESTROY_INFRA } }
+            when { expression { params.PIPELINE_MODE == 'deploy' } }
             steps {
                 deleteDir()
                 git branch: 'main', url: 'https://github.com/MUTHURAJA25/mxk_infra_applicatication.git'
@@ -41,7 +43,7 @@ pipeline {
         }
 
         stage('Terraform Plan') {
-            when { expression { return !params.DESTROY_INFRA } }
+            when { expression { params.PIPELINE_MODE == 'deploy' } }
             steps {
                 dir('infra') {
                     withCredentials([[ 
@@ -55,7 +57,7 @@ pipeline {
         }
 
         stage('Terraform Apply') {
-            when { expression { return !params.DESTROY_INFRA } }
+            when { expression { params.PIPELINE_MODE == 'deploy' } }
             steps {
                 dir('infra') {
                     withCredentials([[ 
@@ -68,8 +70,8 @@ pipeline {
             }
         }
 
-        stage('Get Terraform Outputs') {
-            when { expression { return !params.DESTROY_INFRA } }
+        stage('Get Outputs') {
+            when { expression { params.PIPELINE_MODE == 'deploy' } }
             steps {
                 dir('infra') {
                     sh "terraform output"
@@ -78,7 +80,7 @@ pipeline {
         }
 
         stage('Get EC2 Public IP') {
-            when { expression { return !params.DESTROY_INFRA } }
+            when { expression { params.PIPELINE_MODE == 'deploy' } }
             steps {
                 dir('infra') {
                     script {
@@ -86,7 +88,6 @@ pipeline {
                             script: "terraform output -raw ec2_public_ip",
                             returnStdout: true
                         ).trim()
-
                         echo "EC2 PUBLIC IP = ${env.EC2_PUBLIC_IP}"
                     }
                 }
@@ -94,18 +95,15 @@ pipeline {
         }
 
         stage('Build Docker Image') {
-            when { expression { return !params.DESTROY_INFRA } }
+            when { expression { params.PIPELINE_MODE == 'deploy' } }
             steps {
-                sh "ls -R"
-                sh """
-                    docker build -t ${IMAGE_NAME}:${IMAGE_TAG} .
-                    docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${IMAGE_NAME}:latest
-                """
+                sh "docker build -t ${IMAGE_NAME}:${IMAGE_TAG} ."
+                sh "docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${IMAGE_NAME}:latest"
             }
         }
 
         stage('Push to Docker Hub') {
-            when { expression { return !params.DESTROY_INFRA } }
+            when { expression { params.PIPELINE_MODE == 'deploy' } }
             steps {
                 withCredentials([usernamePassword(
                     credentialsId: 'dockerhub-creds',
@@ -116,14 +114,13 @@ pipeline {
                         echo "$PASS" | docker login -u "$USER" --password-stdin
                         docker push ${IMAGE_NAME}:${IMAGE_TAG}
                         docker push ${IMAGE_NAME}:latest
-                        docker logout
                     """
                 }
             }
         }
 
         stage('Deploy to EC2') {
-            when { expression { return !params.DESTROY_INFRA } }
+            when { expression { params.PIPELINE_MODE == 'deploy' } }
             steps {
                 withCredentials([sshUserPrivateKey(
                     credentialsId: 'ec2-ssh-key',
@@ -132,7 +129,6 @@ pipeline {
                 )]) {
                     sh '''
                         chmod 600 "$SSH_KEY"
-
                         ssh -o StrictHostKeyChecking=no -i "$SSH_KEY" "$SSH_USER"@"$EC2_PUBLIC_IP" '
                             sudo systemctl start docker || true
                             sudo docker stop myapp || true
@@ -146,7 +142,7 @@ pipeline {
         }
 
         stage('Terraform Destroy') {
-            when { expression { return params.DESTROY_INFRA == true } }
+            when { expression { params.PIPELINE_MODE == 'destroy' } }
             steps {
                 script {
                     input message: "Confirm Terraform Destroy?", ok: "Destroy Infrastructure"
@@ -167,8 +163,8 @@ pipeline {
     post {
         always {
             script {
-                if (!params.DESTROY_INFRA) {
-                    echo "Deployment finished — visit: http://${EC2_PUBLIC_IP}"
+                if (params.PIPELINE_MODE == 'deploy') {
+                    echo "Deployment completed — visit: http://${EC2_PUBLIC_IP}"
                 } else {
                     echo "Infrastructure destroyed successfully."
                 }

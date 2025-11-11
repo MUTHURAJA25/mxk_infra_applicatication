@@ -19,17 +19,18 @@ pipeline {
         }
 
         stage('Terraform Init') {
-            steps {
-                dir('infra') {
-                    withCredentials([[
-                        $class: 'AmazonWebServicesCredentialsBinding',
-                        credentialsId: 'aws-crendentails-vgs'
-                    ]]) {
-                        sh "terraform init"
-                    }
-                }
+    steps {
+        dir('infra') {
+            withCredentials([[
+                $class: 'AmazonWebServicesCredentialsBinding',
+                credentialsId: 'aws-crendentails-vgs'
+            ]]) {
+                sh "terraform init -reconfigure"
             }
         }
+    }
+}
+
 
         stage('Terraform Plan') {
             steps {

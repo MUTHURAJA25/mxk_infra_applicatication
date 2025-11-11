@@ -131,6 +131,25 @@ pipeline {
             }
         }
     }
+stage('Terraform Destroy') {
+    when {
+        expression { return params.DESTROY_INFRA == true }
+    }
+    steps {
+        script {
+            input message: "Confirm Terraform Destroy?", ok: "Destroy Infrastructure"
+        }
+
+        dir('infra') {
+            withCredentials([[ 
+                $class: 'AmazonWebServicesCredentialsBinding',
+                credentialsId: 'aws-crendentails-vgs'
+            ]]) {
+                sh "terraform destroy -var-file=terraform.tfvars -auto-approve"
+            }
+        }
+    }
+}
 
     post {
         always {

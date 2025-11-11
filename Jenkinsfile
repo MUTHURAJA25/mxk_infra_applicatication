@@ -72,17 +72,19 @@ pipeline {
 
         stage('Get EC2 Public IP') {
             steps {
-                dir('infra') {
-                    script {
-                        env.EC2_PUBLIC_IP = sh(
-                            script: "terraform output -raw ec2_public_ip",
-                            returnStdout: true
-                        ).trim()
-                        echo "✅ EC2 PUBLIC IP = ${env.EC2_PUBLIC_IP}"
-                    }
-                }
+        dir('infra') {
+            script {
+                env.EC2_PUBLIC_IP = sh(
+                    script: "terraform output -raw ec2_public_ip",
+                    returnStdout: true
+                ).trim()
+
+                echo "✅ EC2 PUBLIC IP = ${env.EC2_PUBLIC_IP}"
             }
         }
+    }
+}
+
 
         stage('Build Docker Image') {
             steps {

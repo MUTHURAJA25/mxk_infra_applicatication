@@ -112,28 +112,27 @@ pipeline {
         }
 
         stage('Deploy to EC2') {
-            steps {
-                withCredentials([sshUserPrivateKey(
-                    credentialsId: 'ec2-ssh-key',
-                    keyFileVariable: 'SSH_KEY',
-                    usernameVariable: 'SSH_USER'
-                )]) {
-                    sh """
-                        chmod 600 "$SSH_KEY"
+    steps {
+        withCredentials([sshUserPrivateKey(
+            credentialsId: 'ec2-ssh-key',
+            keyFileVariable: 'SSH_KEY',
+            usernameVariable: 'SSH_USER'
+        )]) {
+            sh '''
+                chmod 600 "$SSH_KEY"
 
-                        ssh -o StrictHostKeyChecking=no -i "$SSH_KEY" $SSH_USER@${EC2_PUBLIC_IP} '
-                            sudo systemctl start docker || true
-                            sudo ufw allow 80/tcp || true
-                            sudo docker stop myapp || true
-                            sudo docker rm myapp || true
-                            sudo docker pull ${IMAGE_NAME}:latest
-                            sudo docker run -d --name myapp -p 80:80 ${IMAGE_NAME}:latest
-                        '
-                    """
-                }
-            }
+                ssh -o StrictHostKeyChecking=no -i "$SSH_KEY" "$SSH_USER"@"$EC2_PUBLIC_IP" '
+                    sudo systemctl start docker || true
+                    sudo docker stop myapp || true
+                    sudo docker rm myapp || true
+                    sudo docker pull muthuraja25/myapp:latest
+                    sudo docker run -d --name myapp -p 80:80 muthuraja25/myapp:latest
+                '
+            '''
         }
     }
+}
+
 
     post {
         always {

@@ -19,37 +19,43 @@ pipeline {
         }
 
         stage('Terraform Init') {
-            steps {
-                withCredentials([[
-                    $class: 'AmazonWebServicesCredentialsBinding',
-                    credentialsId: 'aws-crendentails-vgs'
-                ]]) {
-                    sh "terraform init"
-                }
+    steps {
+        dir('infra') {
+            withCredentials([[
+                $class: 'AmazonWebServicesCredentialsBinding',
+                credentialsId: 'aws-crendentails-vgs'
+            ]]) {
+                sh "terraform init"
             }
         }
+    }
+}
 
-        stage('Terraform Plan') {
-            steps {
-                withCredentials([[
-                    $class: 'AmazonWebServicesCredentialsBinding',
-                    credentialsId: 'aws-crendentails-vgs'
-                ]]) {
-                    sh "terraform plan -var-file=terraform.tfvars -out=tfplan"
-                }
+stage('Terraform Plan') {
+    steps {
+        dir('infra') {
+            withCredentials([[
+                $class: 'AmazonWebServicesCredentialsBinding',
+                credentialsId: 'aws-crendentails-vgs'
+            ]]) {
+                sh "terraform plan -var-file=terraform.tfvars -out=tfplan"
             }
         }
+    }
+}
 
-        stage('Terraform Apply') {
-            steps {
-                withCredentials([[
-                    $class: 'AmazonWebServicesCredentialsBinding',
-                    credentialsId: 'aws-crendentails-vgs'
-                ]]) {
-                    sh "terraform apply -auto-approve tfplan"
-                }
+stage('Terraform Apply') {
+    steps {
+        dir('infra') {
+            withCredentials([[
+                $class: 'AmazonWebServicesCredentialsBinding',
+                credentialsId: 'aws-crendentails-vgs'
+            ]]) {
+                sh "terraform apply -auto-approve tfplan"
             }
         }
+    }
+}
 
         stage('Get EC2 Public IP') {
             steps {

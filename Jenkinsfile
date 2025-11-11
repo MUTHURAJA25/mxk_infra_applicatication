@@ -2,7 +2,7 @@ properties([
     parameters([
         choice(
             name: 'PIPELINE_MODE',
-            choices: ['deploy', 'destroy'],
+            choices: ['destroy', 'deploy'],
             description: 'Select: deploy infra/app OR destroy infra'
         )
     ])

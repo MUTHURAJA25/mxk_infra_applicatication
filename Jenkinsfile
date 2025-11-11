@@ -1,6 +1,14 @@
 pipeline {
     agent any
 
+    parameters {
+        booleanParam(
+            name: 'DESTROY_INFRA',
+            defaultValue: false,
+            description: 'Enable to destroy complete Terraform infrastructure'
+        )
+    }
+
     environment {
         AWS_REGION     = "us-east-2"
         DOCKERHUB_USER = "muthuraja25"
@@ -11,6 +19,7 @@ pipeline {
     stages {
 
         stage('Checkout Code') {
+            when { expression { return !params.DESTROY_INFRA } }
             steps {
                 deleteDir()
                 git branch: 'main', url: 'https://github.com/MUTHURAJA25/mxk_infra_applicatication.git'
@@ -21,7 +30,7 @@ pipeline {
         stage('Terraform Init') {
             steps {
                 dir('infra') {
-                    withCredentials([[
+                    withCredentials([[ 
                         $class: 'AmazonWebServicesCredentialsBinding',
                         credentialsId: 'aws-crendentails-vgs'
                     ]]) {
@@ -32,9 +41,10 @@ pipeline {
         }
 
         stage('Terraform Plan') {
+            when { expression { return !params.DESTROY_INFRA } }
             steps {
                 dir('infra') {
-                    withCredentials([[
+                    withCredentials([[ 
                         $class: 'AmazonWebServicesCredentialsBinding',
                         credentialsId: 'aws-crendentails-vgs'
                     ]]) {
@@ -45,9 +55,10 @@ pipeline {
         }
 
         stage('Terraform Apply') {
+            when { expression { return !params.DESTROY_INFRA } }
             steps {
                 dir('infra') {
-                    withCredentials([[
+                    withCredentials([[ 
                         $class: 'AmazonWebServicesCredentialsBinding',
                         credentialsId: 'aws-crendentails-vgs'
                     ]]) {
@@ -58,6 +69,7 @@ pipeline {
         }
 
         stage('Get Terraform Outputs') {
+            when { expression { return !params.DESTROY_INFRA } }
             steps {
                 dir('infra') {
                     sh "terraform output"
@@ -66,6 +78,7 @@ pipeline {
         }
 
         stage('Get EC2 Public IP') {
+            when { expression { return !params.DESTROY_INFRA } }
             steps {
                 dir('infra') {
                     script {
@@ -74,13 +87,14 @@ pipeline {
                             returnStdout: true
                         ).trim()
 
-                        echo "✅ EC2 PUBLIC IP = ${env.EC2_PUBLIC_IP}"
+                        echo "EC2 PUBLIC IP = ${env.EC2_PUBLIC_IP}"
                     }
                 }
             }
         }
 
         stage('Build Docker Image') {
+            when { expression { return !params.DESTROY_INFRA } }
             steps {
                 sh "ls -R"
                 sh """
@@ -91,6 +105,7 @@ pipeline {
         }
 
         stage('Push to Docker Hub') {
+            when { expression { return !params.DESTROY_INFRA } }
             steps {
                 withCredentials([usernamePassword(
                     credentialsId: 'dockerhub-creds',
@@ -108,6 +123,7 @@ pipeline {
         }
 
         stage('Deploy to EC2') {
+            when { expression { return !params.DESTROY_INFRA } }
             steps {
                 withCredentials([sshUserPrivateKey(
                     credentialsId: 'ec2-ssh-key',
@@ -116,8 +132,6 @@ pipeline {
                 )]) {
                     sh '''
                         chmod 600 "$SSH_KEY"
-
-                        echo "🚀 Deploying container to EC2..."
 
                         ssh -o StrictHostKeyChecking=no -i "$SSH_KEY" "$SSH_USER"@"$EC2_PUBLIC_IP" '
                             sudo systemctl start docker || true
@@ -130,30 +144,35 @@ pipeline {
                 }
             }
         }
-    }
-stage('Terraform Destroy') {
-    when {
-        expression { return params.DESTROY_INFRA == true }
-    }
-    steps {
-        script {
-            input message: "Confirm Terraform Destroy?", ok: "Destroy Infrastructure"
-        }
 
-        dir('infra') {
-            withCredentials([[ 
-                $class: 'AmazonWebServicesCredentialsBinding',
-                credentialsId: 'aws-crendentails-vgs'
-            ]]) {
-                sh "terraform destroy -var-file=terraform.tfvars -auto-approve"
+        stage('Terraform Destroy') {
+            when { expression { return params.DESTROY_INFRA == true } }
+            steps {
+                script {
+                    input message: "Confirm Terraform Destroy?", ok: "Destroy Infrastructure"
+                }
+
+                dir('infra') {
+                    withCredentials([[ 
+                        $class: 'AmazonWebServicesCredentialsBinding',
+                        credentialsId: 'aws-crendentails-vgs'
+                    ]]) {
+                        sh "terraform destroy -var-file=terraform.tfvars -auto-approve"
+                    }
+                }
             }
         }
     }
-}
 
     post {
         always {
-            echo "✅ Deployment finished — visit: http://${EC2_PUBLIC_IP}"
+            script {
+                if (!params.DESTROY_INFRA) {
+                    echo "Deployment finished — visit: http://${EC2_PUBLIC_IP}"
+                } else {
+                    echo "Infrastructure destroyed successfully."
+                }
+            }
         }
     }
 }

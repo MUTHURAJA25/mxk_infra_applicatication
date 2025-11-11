@@ -123,6 +123,8 @@ pipeline {
             sh '''
                 chmod 600 "$SSH_KEY"
 
+                echo "🚀 Deploying container to EC2..."
+
                 ssh -o StrictHostKeyChecking=no -i "$SSH_KEY" "$SSH_USER"@"$EC2_PUBLIC_IP" '
                     sudo systemctl start docker || true
                     sudo docker stop myapp || true
@@ -134,6 +136,7 @@ pipeline {
         }
     }
 }
+
 
 
     post {

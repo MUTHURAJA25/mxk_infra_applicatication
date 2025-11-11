@@ -37,24 +37,3 @@ variable "ami_id" {
   description = "AMI ID for EC2 instance"
   type        = string
 }
-
-variable "vpc_cidr" {
-  description = "CIDR block for the VPC"
-  type        = string
-}
-
-variable "public_subnet_cidr" {
-  description = "CIDR block for public subnet"
-  type        = string
-}
-
-variable "az1" {
-  description = "Availability Zone for subnet"
-  type        = string
-}
-
-variable "ami_id" {
-  description = "AMI ID for EC2 instance"
-  type        = string
-}
-

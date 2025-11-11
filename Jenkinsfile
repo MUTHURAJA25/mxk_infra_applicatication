@@ -19,80 +19,80 @@ pipeline {
         }
 
         stage('Terraform Init') {
-    steps {
-        dir('infra') {
-            withCredentials([[
-                $class: 'AmazonWebServicesCredentialsBinding',
-                credentialsId: 'aws-crendentails-vgs'
-            ]]) {
-                sh "terraform init"
-            }
-        }
-    }
-}
-
-stage('Terraform Plan') {
-    steps {
-        dir('infra') {
-            withCredentials([[
-                $class: 'AmazonWebServicesCredentialsBinding',
-                credentialsId: 'aws-crendentails-vgs'
-            ]]) {
-                sh "terraform plan -var-file=terraform.tfvars -out=tfplan"
-            }
-        }
-    }
-}
-
-stage('Terraform Apply') {
-    steps {
-        dir('infra') {
-            withCredentials([[
-                $class: 'AmazonWebServicesCredentialsBinding',
-                credentialsId: 'aws-crendentails-vgs'
-            ]]) {
-                sh "terraform apply -auto-approve tfplan"
-            }
-        }
-    }
-}
- stage('Get Terraform Outputs') {
-    steps {
-        dir('infra') {
-            withCredentials([[
-                $class: 'AmazonWebServicesCredentialsBinding',
-                credentialsId: 'aws-crendentails-vgs'
-            ]]) {
-                sh "terraform output"
-            }
-        }
-    }
-        stage('Get EC2 Public IP') {
             steps {
-                script {
-                    env.EC2_PUBLIC_IP = sh(
-                        script: "terraform output -raw ec2_public_ip",
-                        returnStdout: true
-                    ).trim()
-                    echo "✅ EC2 PUBLIC IP = ${env.EC2_PUBLIC_IP}"
+                dir('infra') {
+                    withCredentials([[
+                        $class: 'AmazonWebServicesCredentialsBinding',
+                        credentialsId: 'aws-crendentails-vgs'
+                    ]]) {
+                        sh "terraform init"
+                    }
                 }
             }
         }
 
-       stage('Build Docker Image') {
-    steps {
-        sh """
-            echo "📂 Listing all files to verify public folder..."
-        """
-        sh "ls -R"
-        
-        sh """
-            echo "🚀 Building Docker image..."
-            docker build -t ${IMAGE_NAME}:${IMAGE_TAG} .
-            docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${IMAGE_NAME}:latest
-        """
-    }
-}
+        stage('Terraform Plan') {
+            steps {
+                dir('infra') {
+                    withCredentials([[
+                        $class: 'AmazonWebServicesCredentialsBinding',
+                        credentialsId: 'aws-crendentails-vgs'
+                    ]]) {
+                        sh "terraform plan -var-file=terraform.tfvars -out=tfplan"
+                    }
+                }
+            }
+        }
+
+        stage('Terraform Apply') {
+            steps {
+                dir('infra') {
+                    withCredentials([[
+                        $class: 'AmazonWebServicesCredentialsBinding',
+                        credentialsId: 'aws-crendentails-vgs'
+                    ]]) {
+                        sh "terraform apply -auto-approve tfplan"
+                    }
+                }
+            }
+        }
+
+        stage('Get Terraform Outputs') {
+            steps {
+                dir('infra') {
+                    withCredentials([[
+                        $class: 'AmazonWebServicesCredentialsBinding',
+                        credentialsId: 'aws-crendentails-vgs'
+                    ]]) {
+                        sh "terraform output"
+                    }
+                }
+            }
+        }
+
+        stage('Get EC2 Public IP') {
+            steps {
+                dir('infra') {
+                    script {
+                        env.EC2_PUBLIC_IP = sh(
+                            script: "terraform output -raw ec2_public_ip",
+                            returnStdout: true
+                        ).trim()
+                        echo "✅ EC2 PUBLIC IP = ${env.EC2_PUBLIC_IP}"
+                    }
+                }
+            }
+        }
+
+        stage('Build Docker Image') {
+            steps {
+                sh "ls -R"
+                sh """
+                    docker build -t ${IMAGE_NAME}:${IMAGE_TAG} .
+                    docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${IMAGE_NAME}:latest
+                """
+            }
+        }
 
         stage('Push to Docker Hub') {
             steps {
@@ -121,7 +121,6 @@ stage('Terraform Apply') {
                     sh """
                         chmod 600 "$SSH_KEY"
 
-                        echo "🚀 Deploying container to EC2..."
                         ssh -o StrictHostKeyChecking=no -i "$SSH_KEY" $SSH_USER@${EC2_PUBLIC_IP} '
                             sudo systemctl start docker || true
                             sudo ufw allow 80/tcp || true

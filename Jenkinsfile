@@ -56,7 +56,17 @@ stage('Terraform Apply') {
         }
     }
 }
-
+ stage('Get Terraform Outputs') {
+    steps {
+        dir('infra') {
+            withCredentials([[
+                $class: 'AmazonWebServicesCredentialsBinding',
+                credentialsId: 'aws-crendentails-vgs'
+            ]]) {
+                sh "terraform output"
+            }
+        }
+    }
         stage('Get EC2 Public IP') {
             steps {
                 script {

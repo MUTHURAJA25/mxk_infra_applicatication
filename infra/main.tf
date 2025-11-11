@@ -92,7 +92,5 @@ resource "aws_instance" "web" {
     Name = "${var.project_name}-ec2"
   }
 }
-output "public_ip" {
-  value = aws_instance.myec2.public_ip
-}
+
 
